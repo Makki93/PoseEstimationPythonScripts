@@ -1,10 +1,8 @@
 # # # # # # # instructions # # # # # # # 
 
-# 1) copy the pictures and the json file into the same folder 
+# 1) create a folder within the image folder called 'filtered'
 
-# 2) create a folder within that folder called 'filtered'
-
-# 3) execute python3 1_Filterpersons.py -p path/to/dir
+# 2) execute python 2_FilterFilesByJson.py -j path/to/json -i path/to/imgs
 
 # # # # # # # # # # # # # # # # # # # # 
 
@@ -14,8 +12,6 @@ import json
 import shutil
 import argparse
 from pathlib import Path
-import itertools
-import math
 
 pixel_limit = 120
 imgs = []
