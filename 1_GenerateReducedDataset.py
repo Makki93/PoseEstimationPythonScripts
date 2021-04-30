@@ -13,9 +13,9 @@ class CocoFilter():
         self.jsonFile['info']['description'] = 'Reduced COCO 2017 Dataset'
         self.jsonFile['info']['url'] = ''
         self.jsonFile['info']['version'] = '0.1'
-        self.jsonFile['info']['year'] = today.strftime("%y")
+        self.jsonFile['info']['year'] = today.strftime("%Y")
         self.jsonFile['info']['contributor'] = 'Markus Dietl'
-        self.jsonFile['info']['date_created'] = today.strftime("%y/%m/%d")
+        self.jsonFile['info']['date_created'] = today.strftime("%Y/%m/%d")
 
     def _process_images(self):
         self.images = dict()
@@ -88,6 +88,8 @@ class CocoFilter():
         """
         self.new_annotations = []
         self.new_image_ids = set()
+        j = 0
+        last_image_id = ''
         for image_id, annotation_list in self.annotations.items():
             for annotation in annotation_list:
                 original_seg_cat = annotation['category_id']
@@ -103,7 +105,7 @@ class CocoFilter():
                         # get x,y,type from keypoints
                         keypoints_x = annotation['keypoints'][::3]
                         keypoints_y = annotation['keypoints'][1::3]
-                        keypoints_type = annotation['keypoints'][2::3]
+                        #keypoints_type = annotation['keypoints'][2::3]
                         # get (x,y) pair of keypoints
                         keypoints_x_y = list(zip(keypoints_x, keypoints_y))
                         
@@ -115,7 +117,14 @@ class CocoFilter():
                                     new_annotation['category_id'] = self.new_category_map[original_seg_cat]
                                     self.new_annotations.append(new_annotation)
                                     self.new_image_ids.add(image_id)
+                                    if (annotation['image_id']) != last_image_id:
+                                        last_image_id = annotation['image_id']
+                                        j += 1
                                     break
+                if j>= self.max_files:
+                    break
+            if j>= self.max_files:
+                break
 
     def _filter_images(self):
         """ Create new collection of images
@@ -130,7 +139,8 @@ class CocoFilter():
         self.output_json_path = Path(args.output_json)
         self.filter_categories = ['person'] # only filters persons
         self.cnt_min_keypoints_per_person = 6 # filters pictures with less than 6 keypoints
-        self.most_distant_keypoints_min_pixel_distance_limit = 120 # filters persons which are far away 
+        self.most_distant_keypoints_min_pixel_distance_limit = 120 # filters persons which are far away
+        self.max_files = 50 # filters persons which are far away
 
         # Verify input path exists
         if not self.input_json_path.exists():
