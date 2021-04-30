@@ -1,46 +1,42 @@
-def draw_skel_and_kp(img, instance_scores, keypoint_scores, keypoint_coords, min_pose_score=0.5, min_part_score=0.5):
-    out_img = img
-    adjacent_keypoints = []
-    cv_keypoints = []
-    for ii, score in enumerate(instance_scores):
-        if score < min_pose_score:
-            continue
-
-        new_keypoints = get_adjacent_keypoints(
-            keypoint_scores[ii, :], keypoint_coords[ii, :, :], min_part_score)
-        adjacent_keypoints.extend(new_keypoints)
-
-        for ks, kc in zip(keypoint_scores[ii, :], keypoint_coords[ii, :, :]):
-            if ks < min_part_score:
-                continue
-            cv_keypoints.append(cv2.KeyPoint(kc[1], kc[0], 10. * ks))
-
-    out_img = cv2.drawKeypoints(
-        out_img, cv_keypoints, outImage=np.array([]), color=(255, 255, 0),
-        flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-    out_img = cv2.polylines(out_img, adjacent_keypoints,
-                            isClosed=False, color=(255, 255, 0))
-    return out_img
-
+import argparse
+import json
+import os
+import cv2
+from pathlib import Path
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Filter COCO JSON: "
-                                                 "Filters a COCO Instances JSON file to only include specified categories. "
-                                                 "This includes images, and annotations. Does not modify 'info' or 'licenses'.")
-
-    parser.add_argument("-img", "--image_path", dest="image_path",
-                        help="path to the images")
-
-    parser.add_argument("-i", "--input_json", dest="input_json",
-                        help="path to a json file in coco format")
-    parser.add_argument("-o", "--output_json", dest="output_json",
-                        help="path to save the output json")
-
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument("-j", dest="json_path")
+    parser.add_argument("-i", dest="imgs_path")
     args = parser.parse_args()
+    json_path = Path(args.json_path)
+    imgs_path = Path(args.imgs_path)
 
-    self.image_path = Path(args.image_path)
-    self.input_json_path = Path(args.input_json)
-    self.output_json_path = Path(args.output_json)
-    self.filter_categories = ['person']  # only filters persons
+    files = []
+    id_to_file = dict()
+    id_to_annot = dict()
+    with open(json_path) as json_file:
+        data = json.load(json_file)
+        for imgs in data['images']:
+            id_to_file[imgs['id']] = imgs['file_name']
+        for annot in data['annotations']:
+            id_to_annot[annot['image_id']] = annot['keypoints']
+
+    for key in id_to_file.keys():
+        img = cv2.imread(str(os.path.join(imgs_path, id_to_file[key])))
+        annotation = list(id_to_annot[key])
+        # print(annotation)
+        keypoints_x = annotation[::3]
+        keypoints_y = annotation[1::3]
+        keypoints_type = annotation[2::3]
+        for i in range(len(keypoints_x)):
+            if(int(keypoints_type[i])==2):
+                cv2.circle(img, (int(keypoints_x[i]), int(keypoints_y[i])), 5, (0, 255, 0), thickness=-1, lineType=cv2.FILLED)
+                # cv2.putText(frame, "{}".format(i), (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 255), 3, lineType=cv2.LINE_AA)
+            elif(int(keypoints_type[i])==1):
+                cv2.circle(img, (int(keypoints_x[i]), int(keypoints_y[i])), 5, (0, 0, 255), thickness=-1, lineType=cv2.FILLED)
+                # cv2.putText(frame, "{}".format(i), (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 255), 3, lineType=cv2.LINE_AA)
+        #cv2.imshow("Output-Keypoints", img)
+        #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
+        cv2.imwrite(str(os.path.join(os.path.join(imgs_path, 'labeled'), id_to_file[key])), img)
