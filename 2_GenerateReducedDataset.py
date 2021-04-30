@@ -1,21 +1,27 @@
 import json
 from pathlib import Path
 
-class CocoFilter():
-    """ Filters the COCO dataset
+class AnnotationFilter():
+    """ Filters the COCO dataset (info, licenses, images, annotations, categories, segment_info)
     """
     def _process_info(self):
-        self.info = self.coco['info']
-        
-    def _process_licenses(self):
-        self.licenses = self.coco['licenses']
-        
+        self.info = self.annot['info']
+
+    def _process_images(self):
+        self.images = dict()
+        for image in self.annot['images']:
+            image_id = image['id']
+            if image_id not in self.images:
+                self.images[image_id] = image
+            else:
+                print(f'ERROR: Skipping duplicate image id: {image}')
+
     def _process_categories(self):
         self.categories = dict()
         self.super_categories = dict()
         self.category_set = set()
 
-        for category in self.coco['categories']:
+        for category in self.annot['categories']:
             cat_id = category['id']
             super_category = category['supercategory']
             
@@ -32,18 +38,9 @@ class CocoFilter():
             else:
                 self.super_categories[super_category] |= {cat_id} # e.g. {1, 2, 3} |= {4} => {1, 2, 3, 4}
 
-    def _process_images(self):
-        self.images = dict()
-        for image in self.coco['images']:
-            image_id = image['id']
-            if image_id not in self.images:
-                self.images[image_id] = image
-            else:
-                print(f'ERROR: Skipping duplicate image id: {image}')
-                
     def _process_segmentations(self):
         self.segmentations = dict()
-        for segmentation in self.coco['annotations']:
+        for segmentation in self.annot['annotations']:
             image_id = segmentation['image_id']
             if image_id not in self.segmentations:
                 self.segmentations[image_id] = []
@@ -101,7 +98,7 @@ class CocoFilter():
         # Open json
         self.input_json_path = Path(args.input_json)
         self.output_json_path = Path(args.output_json)
-        self.filter_categories = args.categories
+        self.filter_categories = ['person']
 
         # Verify input path exists
         if not self.input_json_path.exists():
@@ -119,12 +116,11 @@ class CocoFilter():
         # Load the json
         print('Loading json file...')
         with open(self.input_json_path) as json_file:
-            self.coco = json.load(json_file)
+            self.annot = json.load(json_file)
         
         # Process the json
         print('Processing input json...')
         self._process_info()
-        self._process_licenses()
         self._process_categories()
         self._process_images()
         self._process_segmentations()
@@ -138,7 +134,6 @@ class CocoFilter():
         # Build new JSON
         new_master_json = {
             'info': self.info,
-            'licenses': self.licenses,
             'images': self.new_images,
             'annotations': self.new_segmentations,
             'categories': self.new_categories
@@ -162,10 +157,8 @@ if __name__ == "__main__":
         help="path to a json file in coco format")
     parser.add_argument("-o", "--output_json", dest="output_json",
         help="path to save the output json")
-    parser.add_argument("-c", "--categories", nargs='+', dest="categories",
-        help="List of category names separated by spaces, e.g. -c person dog bicycle")
 
     args = parser.parse_args()
 
-    cf = CocoFilter()
+    cf = AnnotationFilter()
     cf.main(args)

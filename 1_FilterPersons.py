@@ -8,6 +8,7 @@
 
 # # # # # # # # # # # # # # # # # # # # 
 
+
 import os
 import json
 import shutil
@@ -16,17 +17,19 @@ from pathlib import Path
 import itertools
 import math
 
-pixel_limit = 150
+pixel_limit = 120
 imgs = []
 files = []
 j = 0
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-p", dest="path")
+parser.add_argument("-j", dest="json_path")
+parser.add_argument("-i", dest="imgs_path")
 args = parser.parse_args()
-path = Path(args.path)
+json_path = Path(args.json_path)
+imgs_path = Path(args.imgs_path)
 
-with open(path) as json_file:
+with open(json_path) as json_file:
     data = json.load(json_file)
 
     # for i in data['images']:
@@ -73,4 +76,4 @@ with open(path) as json_file:
 
 print(str(j), " images found")
 for f in files:
-    shutil.copy(os.path.join(path, f) , os.path.join(os.path.join(path, 'filtered'), f))
+    shutil.copy(os.path.join(imgs_path, f), os.path.join(os.path.join(imgs_path, 'filtered'), f))
