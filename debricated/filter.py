@@ -1,45 +1,21 @@
 import json
 from pathlib import Path
-import itertools
-import math
-from datetime import date
 
 class CocoFilter():
-    """ Filters the COCO dataset (info, licenses, images, annotations, categories) and generates a new, filtered json file
+    """ Filters the COCO dataset
     """
-    def _generate_info(self):
-        today = date.today()
-        self.info = self.jsonFile['info']
-        self.jsonFile['info']['description'] = 'Reduced COCO 2017 Dataset'
-        self.jsonFile['info']['url'] = ''
-        self.jsonFile['info']['version'] = '0.1'
-        self.jsonFile['info']['year'] = today.strftime("%y")
-        self.jsonFile['info']['contributor'] = 'Markus Dietl'
-        self.jsonFile['info']['date_created'] = today.strftime("%y/%m/%d")
-
-    def _process_images(self):
-        self.images = dict()
-        for image in self.jsonFile['images']:
-            image_id = image['id']
-            if image_id not in self.images:
-                self.images[image_id] = image
-            else:
-                print(f'ERROR: Skipping duplicate image id: {image}')
-                
-    def _process_annotations(self):
-        self.annotations = dict()
-        for annotation in self.jsonFile['annotations']:
-            image_id = annotation['image_id']
-            if image_id not in self.annotations:
-                self.annotations[image_id] = []
-            self.annotations[image_id].append(annotation)
-
+    def _process_info(self):
+        self.info = self.coco['info']
+        
+    def _process_licenses(self):
+        self.licenses = self.coco['licenses']
+        
     def _process_categories(self):
         self.categories = dict()
         self.super_categories = dict()
         self.category_set = set()
 
-        for category in self.jsonFile['categories']:
+        for category in self.coco['categories']:
             cat_id = category['id']
             super_category = category['supercategory']
             
@@ -55,6 +31,23 @@ class CocoFilter():
                 self.super_categories[super_category] = {cat_id}
             else:
                 self.super_categories[super_category] |= {cat_id} # e.g. {1, 2, 3} |= {4} => {1, 2, 3, 4}
+
+    def _process_images(self):
+        self.images = dict()
+        for image in self.coco['images']:
+            image_id = image['id']
+            if image_id not in self.images:
+                self.images[image_id] = image
+            else:
+                print(f'ERROR: Skipping duplicate image id: {image}')
+                
+    def _process_segmentations(self):
+        self.segmentations = dict()
+        for segmentation in self.coco['annotations']:
+            image_id = segmentation['image_id']
+            if image_id not in self.segmentations:
+                self.segmentations[image_id] = []
+            self.segmentations[image_id].append(segmentation)
 
     def _filter_categories(self):
         """ Find category ids matching args
@@ -86,36 +79,16 @@ class CocoFilter():
         """ Create new collection of annotations matching category ids
             Keep track of image ids matching annotations
         """
-        self.new_annotations = []
+        self.new_segmentations = []
         self.new_image_ids = set()
-        for image_id, annotation_list in self.annotations.items():
-            for annotation in annotation_list:
-                original_seg_cat = annotation['category_id']
-
-                # image matches category
+        for image_id, segmentation_list in self.segmentations.items():
+            for segmentation in segmentation_list:
+                original_seg_cat = segmentation['category_id']
                 if original_seg_cat in self.new_category_map.keys():
-
-                    # image matches count of minimum keypoints
-                    if int(annotation['num_keypoints']) >= self.cnt_min_keypoints_per_person:
-
-                        # filter pictures with random non-zero keypoints being at least pixel_limit pixels apart
-
-                        # get x,y,type from keypoints
-                        keypoints_x = annotation['keypoints'][::3]
-                        keypoints_y = annotation['keypoints'][1::3]
-                        keypoints_type = annotation['keypoints'][2::3]
-                        # get (x,y) pair of keypoints
-                        keypoints_x_y = list(zip(keypoints_x, keypoints_y))
-                        
-                        for pair in itertools.combinations(keypoints_x_y, r=2):
-                            if pair[0][0] != 0 and pair[0][1] != 0 and pair[1][0] != 0 and pair[1][1] != 0:
-                                if math.hypot(pair[1][0] - pair[0][0], pair[1][1] - pair[0][1]) > self.most_distant_keypoints_min_pixel_distance_limit:
-                                    # print(math.hypot(pair[1][0] - pair[0][0], pair[1][1] - pair[0][1]))
-                                    new_annotation = dict(annotation)
-                                    new_annotation['category_id'] = self.new_category_map[original_seg_cat]
-                                    self.new_annotations.append(new_annotation)
-                                    self.new_image_ids.add(image_id)
-                                    break
+                    new_segmentation = dict(segmentation)
+                    new_segmentation['category_id'] = self.new_category_map[original_seg_cat]
+                    self.new_segmentations.append(new_segmentation)
+                    self.new_image_ids.add(image_id)
 
     def _filter_images(self):
         """ Create new collection of images
@@ -123,14 +96,12 @@ class CocoFilter():
         self.new_images = []
         for image_id in self.new_image_ids:
             self.new_images.append(self.images[image_id])
- 
+
     def main(self, args):
         # Open json
         self.input_json_path = Path(args.input_json)
         self.output_json_path = Path(args.output_json)
-        self.filter_categories = ['person'] # only filters persons
-        self.cnt_min_keypoints_per_person = 6 # filters pictures with less than 6 keypoints
-        self.most_distant_keypoints_min_pixel_distance_limit = 120 # filters persons which are far away 
+        self.filter_categories = args.categories
 
         # Verify input path exists
         if not self.input_json_path.exists():
@@ -148,16 +119,17 @@ class CocoFilter():
         # Load the json
         print('Loading json file...')
         with open(self.input_json_path) as json_file:
-            self.jsonFile = json.load(json_file)
+            self.coco = json.load(json_file)
         
         # Process the json
         print('Processing input json...')
-        self._generate_info()
-        self._process_images()
-        self._process_annotations()
+        self._process_info()
+        self._process_licenses()
         self._process_categories()
+        self._process_images()
+        self._process_segmentations()
 
-        # Filter the json
+        # Filter to specific categories
         print('Filtering...')
         self._filter_categories()
         self._filter_annotations()
@@ -166,8 +138,9 @@ class CocoFilter():
         # Build new JSON
         new_master_json = {
             'info': self.info,
+            'licenses': self.licenses,
             'images': self.new_images,
-            'annotations': self.new_annotations,
+            'annotations': self.new_segmentations,
             'categories': self.new_categories
         }
 
@@ -189,6 +162,8 @@ if __name__ == "__main__":
         help="path to a json file in coco format")
     parser.add_argument("-o", "--output_json", dest="output_json",
         help="path to save the output json")
+    parser.add_argument("-c", "--categories", nargs='+', dest="categories",
+        help="List of category names separated by spaces, e.g. -c person dog bicycle")
 
     args = parser.parse_args()
 

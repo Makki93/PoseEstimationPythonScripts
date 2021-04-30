@@ -32,20 +32,20 @@ with open(json_path) as json_file:
             keypoints_y = a['keypoints'][1::3]
             keypoints_type = a['keypoints'][2::3]
             print(keypoints_x)
-            sys.exit()
+            quit()
 
-            found = false
+            found = False
             for pair in itertools.combinations(keypoints_x, repeat=2):
                 if(abs(pair[0]-pair[1])>40):
                     imgs.append(a['image_id'])
-                    found = true
+                    found = True
                     break
 
             if (not found):
                 for pair in itertools.combinations(keypoints_y, repeat=2):
                     if(abs(pair[0]-pair[1])>40):
                         imgs.append(a['image_id'])
-                        found = true
+                        found = True
                         break
 
     for i in data['images']:
