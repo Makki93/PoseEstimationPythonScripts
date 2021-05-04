@@ -27,12 +27,8 @@ if __name__ == "__main__":
         for annot in data['annotations']:
             key = int(annot['image_id'])
             if key not in id_to_annot:
-                value = [annot['keypoints']]
-                id_to_annot[key] = value
-            else:
-                new_value = id_to_annot[key]
-                new_value.append(annot['keypoints'])
-                id_to_annot[key] = new_value
+                id_to_annot[key] = []
+            id_to_annot[key].append(annot['keypoints'])
 
     file_to_annot = dict()
     for key in id_to_file.keys():
