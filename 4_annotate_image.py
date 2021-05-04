@@ -8,7 +8,7 @@ import sqlite3
 conn = sqlite3.connect(':memory:')
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="")
+    parser = argparse.ArgumentParser()
     parser.add_argument("-j", dest="json_path")
     parser.add_argument("-i", dest="imgs_path")
     args = parser.parse_args()
@@ -21,8 +21,8 @@ if __name__ == "__main__":
 
     with open(json_path) as json_file:
         data = json.load(json_file)
-        for imgs in data['images']:
-            id_to_file[int(imgs['id'])] = imgs['file_name']
+        for img in data['images']:
+            id_to_file[int(img['id'])] = img['file_name']
 
         for annot in data['annotations']:
             key = int(annot['image_id'])
