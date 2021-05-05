@@ -26,25 +26,18 @@ class Keypoint(IntEnum):
     right_ankle = 16
 
 
-def checkBodyKeypointAmount(annotations: list):
+def check_body_keypoint_cnt_max(annotations: list):
     keypoints = Keypoint
     keypoint_cnt_max = 0
     for annot in annotations:
         keypoint_cnt = 0
         keypoints_x = annot['keypoints'][::3]
         keypoints_y = annot['keypoints'][1::3]
-        print(keypoints_x)
-        print(keypoints_y)
-
-        for i in range(keypoints.left_shoulder, keypoints.right_ankle+1):
+        for i in range(keypoints.left_shoulder, keypoints.right_ankle + 1):
             if keypoints_x[i] != 0 and keypoints_y[i] != 0:
                 keypoint_cnt += 1
         if keypoint_cnt > keypoint_cnt_max:
             keypoint_cnt_max = keypoint_cnt
-
-        print(keypoint_cnt)
-
-    quit()
     return keypoint_cnt_max
 
 
@@ -76,7 +69,7 @@ class CocoFilter():
 
         # filters pictures which does not contain at least one
         # person with more than 3 keypoints regardless the head keypoints
-        self.main_person_body_keypoint_limit = 3
+        self.main_person_body_keypoint_limit = 6
 
         # filters persons which are far away
         self.main_person_body_keypoint_min_distance_limit = 120
@@ -145,19 +138,19 @@ class CocoFilter():
         self.category_set = set()
 
         for category in self.jsonFile['categories']:
-            cat_id = category['id']
-            super_category = category['supercategory']
+            cat_id = category['id']  # 1
+            super_category = category['supercategory']  # person
 
             # Add category to categories dict
-            if cat_id not in self.categories:
-                self.categories[cat_id] = category
-                self.category_set.add(category['name'])
+            if cat_id not in self.categories:  # 1
+                self.categories[cat_id] = category  # 1 = old entry
+                self.category_set.add(category['name'])  # person
             else:
                 print(f'ERROR: Skipping duplicate category id: {category}')
 
             # Add category id to the super_categories dict
             if super_category not in self.super_categories:
-                self.super_categories[super_category] = {cat_id}
+                self.super_categories[super_category] = {cat_id}  # "person" = {1}
             else:
                 self.super_categories[super_category] |= {cat_id}  # e.g. {1, 2, 3} |= {4} => {1, 2, 3, 4}
 
@@ -166,14 +159,6 @@ class CocoFilter():
             Create mapping from original category id to new category id
             Create new collection of categories
         """
-        missing_categories = set(self.filter_for_categories) - self.category_set
-        if len(missing_categories) > 0:
-            print(f'Did not find categories: {missing_categories}')
-            should_continue = input('Continue? (y/n) ').lower()
-            if should_continue != 'y' and should_continue != 'yes':
-                print('Quitting early.')
-                quit()
-
         self.new_category_map = dict()
         new_id = 1
         for key, item in self.categories.items():
@@ -193,46 +178,52 @@ class CocoFilter():
         """
         self.new_annotations = []
         self.new_image_ids = set()
-        j = 0
-        last_image_id = ''
+        cnt = 0
         for image_id, annotations in self.id_to_annot.items():
+            not_crowd = True
+            main_person_large_enough = False
+            categoryMatches = True
 
-            checkBodyKeypointAmount(annotations)
             for annot in annotations:
-                original_seg_cat = annot['category_id']
-
-                # image matches category
-                if original_seg_cat in self.new_category_map.keys():
-
-                    # image matches count of minimum keypoints
-                    if int(annot['num_keypoints']) >= self.main_person_body_keypoint_limit:
-
-                        # filter pictures with random non-zero keypoints being at least pixel_limit pixels apart
-
-                        # get x,y,type from keypoints
-                        keypoints_x = annot['keypoints'][::3]
-                        keypoints_y = annot['keypoints'][1::3]
-                        # keypoints_type = annotation['keypoints'][2::3]
-                        # get (x,y) pair of keypoints
-                        keypoints_x_y = list(zip(keypoints_x, keypoints_y))
-
-                        for pair in itertools.combinations(keypoints_x_y, r=2):
-                            if pair[0][0] != 0 and pair[0][1] != 0 and pair[1][0] != 0 and pair[1][1] != 0:
-                                if math.hypot(pair[1][0] - pair[0][0], pair[1][1] - pair[0][
-                                    1]) > self.main_person_body_keypoint_min_distance_limit:
-                                    # print(math.hypot(pair[1][0] - pair[0][0], pair[1][1] - pair[0][1]))
-                                    new_annotation = dict(annot)
-                                    new_annotation['category_id'] = self.new_category_map[original_seg_cat]
-                                    self.new_annotations.append(new_annotation)
-                                    self.new_image_ids.add(image_id)
-                                    if (annot['image_id']) != last_image_id:
-                                        last_image_id = annot['image_id']
-                                        j += 1
-                                    break
-                if j >= self.max_files:
+                if annot['category_id'] not in self.new_category_map.keys():
+                    categoryMatches = False
                     break
-            if j >= self.max_files:
+
+                if annot['iscrowd'] == 1:
+                    not_crowd = False
+                    break
+
+                # get x,y,type from keypoints
+                keypoint_cnt = 0
+                keypoints_x = annot['keypoints'][::3]
+                keypoints_y = annot['keypoints'][1::3]
+                # keypoints_type = annotation['keypoints'][2::3]
+                for i in range(Keypoint.left_shoulder, Keypoint.right_ankle + 1):
+                    if keypoints_x[i] != 0 and keypoints_y[i] != 0:
+                        keypoint_cnt += 1
+
+                if keypoint_cnt > self.main_person_body_keypoint_limit:
+                    # get (x,y) pair of keypoints
+                    keypoints_x_y = list(zip(keypoints_x, keypoints_y))
+
+                    for pair in itertools.combinations(keypoints_x_y, r=2):
+                        if pair[0][0] != 0 and pair[0][1] != 0 and pair[1][0] != 0 and pair[1][1] != 0:
+                            if math.hypot(pair[1][0] - pair[0][0], pair[1][1] - pair[0][1]) > self.main_person_body_keypoint_min_distance_limit:
+                                main_person_large_enough = True
+
+            if not_crowd and main_person_large_enough and categoryMatches:
+                for annot in annotations:
+                    original_seg_cat = annot['category_id']
+                    new_annotation = dict(annot)
+                    new_annotation['category_id'] = self.new_category_map[original_seg_cat]
+                    self.new_annotations.append(new_annotation)
+                    self.new_image_ids.add(image_id)
+                cnt += 1
+            if cnt % 500 == 0:
+                print(str(cnt) + " matching images found")
+            if cnt >= self.max_files:
                 break
+        print(str(cnt) + " matching images found")
 
     def _filter_images(self):
         """ Create new collection of images
