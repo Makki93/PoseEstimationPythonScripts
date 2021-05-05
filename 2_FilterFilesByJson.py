@@ -8,15 +8,15 @@
 
 
 import os
+import argparse
 import json
 import shutil
-import argparse
 from pathlib import Path
 
 pixel_limit = 120
 imgs = []
 files = []
-j = 0
+cnt = 0
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-j", dest="json_path")
@@ -33,3 +33,8 @@ with open(json_path) as json_file:
 print(str(len(files)) + " images found")
 for f in files:
     shutil.copy(os.path.join(imgs_path, f), os.path.join(os.path.join(imgs_path, 'filtered'), f))
+    cnt += 1
+    if cnt % 500 == 0:
+        print(str(cnt) + " images copied")
+
+print(str(cnt) + " images copied")

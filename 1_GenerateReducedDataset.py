@@ -1,3 +1,4 @@
+import argparse
 import json
 from enum import IntEnum
 from pathlib import Path
@@ -26,26 +27,23 @@ class Keypoint(IntEnum):
     right_ankle = 16
 
 
-def check_body_keypoint_cnt_max(annotations: list):
-    keypoints = Keypoint
-    keypoint_cnt_max = 0
-    for annot in annotations:
-        keypoint_cnt = 0
-        keypoints_x = annot['keypoints'][::3]
-        keypoints_y = annot['keypoints'][1::3]
-        for i in range(keypoints.left_shoulder, keypoints.right_ankle + 1):
-            if keypoints_x[i] != 0 and keypoints_y[i] != 0:
-                keypoint_cnt += 1
-        if keypoint_cnt > keypoint_cnt_max:
-            keypoint_cnt_max = keypoint_cnt
-    return keypoint_cnt_max
-
-
-class CocoFilter():
+class CocoFilter:
     """ Filters COCO dataset (info, licenses, images, annotations, categories) and generates a new, filtered json file
     """
 
     def __init__(self, paths):
+        self.filter_for_categories = ['person']
+
+        # filters pictures which does not contain at least one
+        # person with more than 3 keypoints regardless the head keypoints
+        self.main_person_body_keypoint_limit = 6
+
+        # filters persons which are far away
+        self.main_person_body_keypoint_min_distance_limit = 120
+
+        # amount of output
+        self.max_files = 100000
+
         # Verify input path exists
         if not Path(paths.input_json).exists():
             print('Input json path not found.')
@@ -61,21 +59,11 @@ class CocoFilter():
                 quit()
         self.output_json_path = Path(paths.output_json)
 
+        print('Loading json file...')
         with open(self.input_json_path) as json_file:
             self.jsonFile = json.load(json_file)
 
     def main(self):
-        self.filter_for_categories = ['person']
-
-        # filters pictures which does not contain at least one
-        # person with more than 3 keypoints regardless the head keypoints
-        self.main_person_body_keypoint_limit = 6
-
-        # filters persons which are far away
-        self.main_person_body_keypoint_min_distance_limit = 120
-
-        # amount of output
-        self.max_files = 100000
 
         # Process the json
         print('Processing input json...')
@@ -173,7 +161,7 @@ class CocoFilter():
             self.new_categories.append(new_category)
 
     def _filter_annotations(self):
-        """ Create new collection of annotations matching category ids
+        """ Create new collection of annotations matching filter criteria from init
             Keep track of image ids matching annotations
         """
         self.new_annotations = []
@@ -223,6 +211,7 @@ class CocoFilter():
                 print(str(cnt) + " matching images found")
             if cnt >= self.max_files:
                 break
+
         print(str(cnt) + " matching images found")
 
     def _filter_images(self):
@@ -234,17 +223,9 @@ class CocoFilter():
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Filter COCO JSON: "
-                                                 "Filters a COCO Instances JSON file to only include specified categories. "
-                                                 "This includes images, and annotations. Does not modify 'info' or 'licenses'.")
-
-    parser.add_argument("-i", "--input_json", dest="input_json",
-                        help="path to a json file in coco format")
-    parser.add_argument("-o", "--output_json", dest="output_json",
-                        help="path to save the output json")
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input_json", dest="input_json", help="path to a json file in coco format")
+    parser.add_argument("-o", "--output_json", dest="output_json", help="path to save the output json")
     args = parser.parse_args()
 
     cf = CocoFilter(args)
