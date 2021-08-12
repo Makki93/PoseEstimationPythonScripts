@@ -47,6 +47,13 @@ class CocoFilter:
             quit()
         self.input_json_path = Path(console_args.input_json)
 
+        # Verify input path exists
+        if not Path(console_args.detections_json).exists():
+            print('Person detection json path not found.')
+            print('Quitting early.')
+            quit()
+        self.person_det_path = Path(console_args.detections_json)
+
         # Verify output path does not already exist
         if Path(console_args.output_json).exists():
             should_continue = input('Output path already exists. Overwrite? (y/n) ').lower()
@@ -58,6 +65,9 @@ class CocoFilter:
         print('Loading json file...')
         with open(self.input_json_path) as json_file:
             self.jsonFile = json.load(json_file)
+
+        with open(self.person_det_path) as json_file:
+            self.jsonDetFile = json.load(json_file)
 
         self.input_image_path = Path(console_args.input_image_path)
         self.blur_threshold = console_args.threshold
@@ -85,10 +95,26 @@ class CocoFilter:
             'categories': self.jsonFile['categories']
         }
 
+        flat_list = []
+        # Iterate through the outer list
+        for element in self.new_dects:
+            if type(element) is list:
+                # If the element is of type list, iterate through the sublist
+                for item in element:
+                    flat_list.append(item)
+            else:
+                flat_list.append(element)
+
+        new_master_json_dect = flat_list
+
         # Write the JSON to a file
         print('Saving new json file...')
         with open(self.output_json_path, 'w+') as output_file:
             json.dump(new_master_json, output_file)
+
+        size = len(str(self.person_det_path))
+        with open(str(self.person_det_path)[:size-5] + '_reduced.json', 'w+') as output_file:
+            json.dump(new_master_json_dect, output_file)
 
         print('Filtered json saved.')
 
@@ -118,6 +144,13 @@ class CocoFilter:
             if image_id not in self.id_to_annot:
                 self.id_to_annot[image_id] = []
             self.id_to_annot[image_id].append(annot)
+
+        self.id_to_dects = dict()
+        for annot in self.jsonDetFile:
+            image_id = annot['image_id']
+            if image_id not in self.id_to_dects:
+                self.id_to_dects[image_id] = []
+            self.id_to_dects[image_id].append(annot)
 
     def _find_annotations_with_crowd(self):
         self.image_ids_with_crowd = set()
@@ -168,10 +201,6 @@ class CocoFilter:
                         self.image_ids_blurry.add(id)
                         break
 
-        for id in self.image_ids_blurry:
-            print(self.images[id]['file_name'])
-
-
     def _filter_images(self):
         """ Create new json of images which were found with console argument criteria
         """
@@ -198,6 +227,12 @@ class CocoFilter:
         self.new_images = []
         for image_id in self.new_image_ids:
             self.new_images.append(self.images[image_id])
+
+
+        self.new_dects = []
+        for image_id, annotations in self.id_to_annot.items():
+            if (not image_id in self.image_ids_with_crowd) and (not image_id in self.image_ids_with_too_few_keypoints) and (not image_id in self.image_ids_blurry):
+                self.new_dects.append(self.id_to_dects[image_id])
 
     def _copy_images(self):
         files = []
@@ -230,6 +265,8 @@ if __name__ == "__main__":
                         help="minimum count of keypoints for each person in image")
     parser.add_argument("-t", "--threshold", type=float, default=120.0,
                         help="focus measures that fall below this value will be considered 'blurry'")
+    parser.add_argument("-d", "--detections_json", dest="detections_json", help="path to person detection results json")
+
     args = parser.parse_args()
 
     cf = CocoFilter(args)
