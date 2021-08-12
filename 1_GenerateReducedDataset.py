@@ -73,6 +73,13 @@ class CocoFilter:
         self.blur_threshold = console_args.threshold
 
     def main(self):
+        # removing old files
+        if os.path.exists(self.output_json_path):
+            os.remove(self.output_json_path)
+
+        size = len(str(self.person_det_path))
+        if os.path.exists(str(self.person_det_path)[:size - 5] + '_reduced.json'):
+            os.remove(str(self.person_det_path)[:size - 5] + '_reduced.json')
 
         # Process the json
         print('Processing input json...')
@@ -230,11 +237,12 @@ class CocoFilter:
         for image_id in self.new_image_ids:
             self.new_images.append(self.images[image_id])
 
+        cnt = 0
         self.new_dects = []
         for image_id, annotations in self.id_to_annot.items():
             if (not image_id in self.image_ids_with_crowd) and (not image_id in self.image_ids_with_too_few_keypoints) and (not image_id in self.image_ids_blurry):
                 self.new_dects.append(self.id_to_dects[image_id])
-
+                cnt += 1
             if cnt >= self.max_files:
                 break
 
