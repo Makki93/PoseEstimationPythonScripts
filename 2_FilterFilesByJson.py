@@ -13,7 +13,6 @@ import json
 import shutil
 from pathlib import Path
 
-pixel_limit = 120
 imgs = []
 files = []
 cnt = 0
@@ -31,8 +30,12 @@ with open(json_path) as json_file:
         files.append(i['file_name'])
 
 print(str(len(files)) + " images found")
+folder = os.path.join(imgs_path.parent, imgs_path.name + "_filtered")
+if not os.path.exists(folder):
+    os.mkdir(folder)
 for f in files:
-    shutil.copy(os.path.join(imgs_path, f), os.path.join(os.path.join(imgs_path, 'filtered'), f))
+    shutil.copy(os.path.join(imgs_path, f),
+                os.path.join(folder, f))
     cnt += 1
     if cnt % 500 == 0:
         print(str(cnt) + " images copied")

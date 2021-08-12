@@ -172,7 +172,6 @@ class CocoFilter:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-img", "--image_path", dest="image_path", help="path to the images")
-
     parser.add_argument("-i", "--input_json", dest="input_json", help="path to a json file in coco format")
     parser.add_argument("-o", "--output_json", dest="output_json", help="path to save the output json")
 
