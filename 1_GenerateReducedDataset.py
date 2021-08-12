@@ -113,7 +113,7 @@ class CocoFilter:
             json.dump(new_master_json, output_file)
 
         size = len(str(self.person_det_path))
-        with open(str(self.person_det_path)[:size-5] + '_reduced.json', 'w+') as output_file:
+        with open(str(self.person_det_path)[:size - 5] + '_reduced.json', 'w+') as output_file:
             json.dump(new_master_json_dect, output_file)
 
         print('Filtered json saved.')
@@ -189,7 +189,8 @@ class CocoFilter:
                 cv_image = cv2.imread(complete_path)
                 for annot in self.id_to_annot[id]:
                     x, y, width, height = annot['bbox']
-                    crop_img = cv_image[int(math.ceil(y)):int(math.ceil(y)+math.floor(height)), int(math.ceil(x)):math.ceil(x)+int(math.floor(width))]
+                    crop_img = cv_image[int(math.ceil(y)):int(math.ceil(y) + math.floor(height)),
+                               int(math.ceil(x)):math.ceil(x) + int(math.floor(width))]
                     gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY)
                     fm = cv2.Laplacian(gray, cv2.CV_64F).var()
                     # cv2.imshow('image', crop_img)
@@ -210,7 +211,8 @@ class CocoFilter:
         self.new_image_filenames = set()
 
         for image_id, annotations in self.id_to_annot.items():
-            if (not image_id in self.image_ids_with_crowd) and (not image_id in self.image_ids_with_too_few_keypoints) and (not image_id in self.image_ids_blurry):
+            if (not image_id in self.image_ids_with_crowd) and (
+                    not image_id in self.image_ids_with_too_few_keypoints) and (not image_id in self.image_ids_blurry):
                 for annot in annotations:
                     new_annotation = dict(annot)
                     new_annotation['category_id'] = 1  # human
@@ -228,11 +230,13 @@ class CocoFilter:
         for image_id in self.new_image_ids:
             self.new_images.append(self.images[image_id])
 
-
         self.new_dects = []
         for image_id, annotations in self.id_to_annot.items():
             if (not image_id in self.image_ids_with_crowd) and (not image_id in self.image_ids_with_too_few_keypoints) and (not image_id in self.image_ids_blurry):
                 self.new_dects.append(self.id_to_dects[image_id])
+
+            if cnt >= self.max_files:
+                break
 
     def _copy_images(self):
         files = []
@@ -244,6 +248,10 @@ class CocoFilter:
         folder = os.path.join(self.input_image_path.parent, self.input_image_path.name + "_reduced")
         if not os.path.exists(folder):
             os.mkdir(folder)
+        else:
+            for file in os.listdir(folder):
+                os.remove(os.path.join(folder, file))
+
         for f in files:
             shutil.copy(os.path.join(self.input_image_path, f),
                         os.path.join(folder, f))
