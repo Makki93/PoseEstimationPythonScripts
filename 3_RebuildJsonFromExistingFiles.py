@@ -56,6 +56,7 @@ class CocoFilter:
                 self.images[image_id] = image
             else:
                 print(f'ERROR: Skipping duplicate image id: {image}')
+        print("Original image count: " + str(len(self.images.keys())))
 
     def _process_annotations(self):
         self.annotations = dict()
@@ -64,6 +65,7 @@ class CocoFilter:
             if image_id not in self.annotations:
                 self.annotations[image_id] = []
             self.annotations[image_id].append(annotation)
+        print("Original annotations count: " + str(len(self.jsonFile['annotations'])))
 
     def _process_categories(self):
         self.categories = dict()
@@ -119,18 +121,17 @@ class CocoFilter:
         """
         self.new_annotations = []
         self.new_image_ids = set()
-        j = 0
         for image_id, annotation_list in self.annotations.items():
-            for annotation in annotation_list:
-                original_seg_cat = annotation['category_id']
+            if os.path.isfile(os.path.join(self.image_path, self.images[image_id]['file_name'])):
+                for annotation in annotation_list:
+                    original_seg_cat = annotation['category_id']
+                    new_annotation = dict(annotation)
+                    new_annotation['category_id'] = self.new_category_map[original_seg_cat]
+                    self.new_annotations.append(new_annotation)
+                    self.new_image_ids.add(image_id)
+        print("New image count: " + str(len(self.new_image_ids)))
+        print("New annotation count: " + str(len(self.new_annotations)))
 
-                # image matches category
-                if original_seg_cat in self.new_category_map.keys():
-                    if os.path.isfile(os.path.join(self.image_path,self.images[image_id]['file_name'])):
-                        new_annotation = dict(annotation)
-                        new_annotation['category_id'] = self.new_category_map[original_seg_cat]
-                        self.new_annotations.append(new_annotation)
-                        self.new_image_ids.add(image_id)
 
     def _filter_images(self):
         """ Create new collection of images
@@ -171,9 +172,9 @@ class CocoFilter:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-img", "--image_path", dest="image_path", help="path to the images")
     parser.add_argument("-i", "--input_json", dest="input_json", help="path to a json file in coco format")
     parser.add_argument("-o", "--output_json", dest="output_json", help="path to save the output json")
+    parser.add_argument("-p", "--image_path", dest="image_path", help="path to the images")
 
     args = parser.parse_args()
 

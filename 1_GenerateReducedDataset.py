@@ -4,7 +4,6 @@ import math
 import os
 import shutil
 import cv2
-import numpy as np
 from enum import IntEnum
 from pathlib import Path
 from datetime import date
@@ -35,24 +34,31 @@ class CocoFilter:
     """
 
     def __init__(self, console_args):
+        self.image_ids_being_filtered = set()
         self.filter_for_categories = ['person']
 
         # amount of output
         self.max_files = int(console_args.max_count_images)
         self.min_keypoint_cnt = int(console_args.min_keypoint_cnt_per_person)
 
-        # Verify input path exists
+        # Verify input paths exists
         if not Path(console_args.input_json).exists():
             print('Input json path not found.')
             print('Quitting early.')
             quit()
-        self.input_json_path = Path(console_args.input_json)
 
-        # Verify input path exists
+        if not Path(console_args.input_image_path).exists():
+            print('Input image path not found.')
+            print('Quitting early.')
+            quit()
+
         if not Path(console_args.detections_json).exists():
             print('Person detection json path not found.')
             print('Quitting early.')
             quit()
+
+        self.input_json_path = Path(console_args.input_json)
+        self.input_image_path = Path(console_args.input_image_path)
         self.person_det_path = Path(console_args.detections_json)
 
         # Verify output json file does not already exist
@@ -72,14 +78,18 @@ class CocoFilter:
             if self.output_json_pers_det_path.exists():
                 os.remove(self.output_json_pers_det_path)
 
+        # Clear target image folder
+        self.output_image_folder = os.path.join(self.input_image_path.parent, self.input_image_path.name + "_reduced")
+        if os.path.exists(self.output_image_folder):
+            for file in os.listdir(self.output_image_folder):
+                os.remove(os.path.join(self.output_image_folder, file))
+
         print('Loading json file...')
         with open(self.input_json_path) as json_file:
             self.jsonFile = json.load(json_file)
 
         with open(self.person_det_path) as json_file:
             self.jsonDetFile = json.load(json_file)
-
-        self.input_image_path = Path(console_args.input_image_path)
         self.blur_threshold = console_args.threshold
 
     def main(self):
@@ -94,6 +104,7 @@ class CocoFilter:
         self._find_annotations_with_crowd()
         self._find_annotations_with_too_few_keypoints()
         self._find_annotations_with_too_small_persons()
+        self._find_annotations_with_too_big_persons()
         self._find_blurry_images()
         self._filter_images()
 
@@ -154,88 +165,80 @@ class CocoFilter:
                 self.id_to_annot[image_id] = []
             self.id_to_annot[image_id].append(annot)
 
-        self.id_to_dects = dict()
+        self.id_to_dets = dict()
         for annot in self.jsonDetFile:
             image_id = annot['image_id']
-            if image_id not in self.id_to_dects:
-                self.id_to_dects[image_id] = []
-            self.id_to_dects[image_id].append(annot)
+            if image_id not in self.id_to_dets:
+                self.id_to_dets[image_id] = []
+            self.id_to_dets[image_id].append(annot)
 
     def _find_annotations_with_crowd(self):
-        self.image_ids_with_crowd = set()
-        for image_id, annotations in self.id_to_annot.items():
-            for annot in annotations:
-                if annot['iscrowd'] == 1:
-                    self.image_ids_with_crowd.add(image_id)
-                    break
+        for id, annotations in self.id_to_annot.items():
+            if id in self.id_to_annot.keys():
+                for annot in annotations:
+                    if annot['iscrowd'] == 1:
+                        self.image_ids_being_filtered.add(id)
+                        break
 
     def _find_annotations_with_too_few_keypoints(self):
-        self.image_ids_with_too_few_keypoints = set()
-        for image_id, annotations in self.id_to_annot.items():
-            for annot in annotations:
-                # get x,y,type from keypoints
-                keypoint_cnt = 0
-                keypoints_x = annot['keypoints'][::3]
-                keypoints_y = annot['keypoints'][1::3]
-                # keypoints_type = annotation['keypoints'][2::3]
-                for i in range(Keypoint.left_shoulder, Keypoint.right_ankle + 1):
-                    if keypoints_x[i] != 0 and keypoints_y[i] != 0:
-                        keypoint_cnt += 1
-                if keypoint_cnt < self.min_keypoint_cnt:
-                    self.image_ids_with_too_few_keypoints.add(image_id)
-                    break
-
-    def _find_annotations_with_too_small_persons(self):
-        self.image_ids_with_too_small_persons = set()
-
-        for id in self.images:
-            if (not id in self.image_ids_with_crowd) and (not id in self.image_ids_with_too_few_keypoints) and (
-                    id in self.id_to_annot.keys()):
-                complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
-                assert (Path(complete_path).exists())
-                img = cv2.imread(complete_path)
-                height, width, channels = img.shape
-
-                for annot in self.id_to_annot[id]:
+        for id, annotations in self.id_to_annot.items():
+            if id in self.id_to_annot.keys() and not id in self.image_ids_being_filtered:
+                for annot in annotations:
                     # get x,y,type from keypoints
                     keypoint_cnt = 0
                     keypoints_x = annot['keypoints'][::3]
                     keypoints_y = annot['keypoints'][1::3]
-                    test = annot['bbox']
-                    print(test)
-                    leftMostKeypoint = [width, 0]
-                    rightMostKeypoint = [0, 0]
-                    upMostKeypoint = [0, height]
-                    downMostKeypoint = [0, 0]
-
                     # keypoints_type = annotation['keypoints'][2::3]
                     for i in range(Keypoint.left_shoulder, Keypoint.right_ankle + 1):
                         if keypoints_x[i] != 0 and keypoints_y[i] != 0:
-                            if keypoints_x[i] < leftMostKeypoint[0]:
-                                leftMostKeypoint = [keypoints_x[i], keypoints_y[i]]
-                            if keypoints_x[i] > rightMostKeypoint[0]:
-                                rightMostKeypoint = [keypoints_x[i], keypoints_y[i]]
-                            if keypoints_y[i] < upMostKeypoint[1]:
-                                upMostKeypoint = [keypoints_x[i], keypoints_y[i]]
-                            if keypoints_y[i] > downMostKeypoint[1]:
-                                downMostKeypoint = [keypoints_x[i], keypoints_y[i]]
-                    print(leftMostKeypoint)
-                    print(rightMostKeypoint)
-                    print(upMostKeypoint)
-                    print(downMostKeypoint)
+                            keypoint_cnt += 1
                     if keypoint_cnt < self.min_keypoint_cnt:
-                        self.image_ids_with_too_small_persons.add(id)
+                        self.image_ids_being_filtered.add(id)
+                        break
+
+    def _find_annotations_with_too_small_persons(self):
+        for id in self.images:
+            if id in self.id_to_annot.keys() and not id in self.image_ids_being_filtered:
+                complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
+                assert (Path(complete_path).exists())
+                img = cv2.imread(complete_path)
+                image_height, image_width, channel = img.shape
+
+                for annot in self.id_to_annot[id]:
+                    bbox_width, bbox_height = annot['bbox'][2:]
+                    height_ratio = bbox_height / image_height
+                    if height_ratio < 0.5:
+                        self.image_ids_being_filtered.add(id)
+                        break
+                    width_ratio = bbox_width / image_width
+                    if width_ratio < 0.15:
+                        self.image_ids_being_filtered.add(id)
+                        break
+
+    def _find_annotations_with_too_big_persons(self):
+        for id in self.images:
+            if id in self.id_to_annot.keys() and not id in self.image_ids_being_filtered:
+                complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
+                assert (Path(complete_path).exists())
+                img = cv2.imread(complete_path)
+                image_height, image_width, channel = img.shape
+
+                for annot in self.id_to_annot[id]:
+                    bbox_width, bbox_height = annot['bbox'][2:]
+                    height_ratio = bbox_height / image_height
+                    if height_ratio > 0.95:
+                        self.image_ids_being_filtered.add(id)
+                        break
+                    width_ratio = bbox_width / image_width
+                    if width_ratio > 0.95:
+                        self.image_ids_being_filtered.add(id)
                         break
 
     def _find_blurry_images(self):
         # load the image, crop the bounding boxes, convert it to grayscale, and compute the
-        # focus measure of the image using the Variance of Laplacian
-        # method
-        self.image_ids_blurry = set()
+        # focus measure of the image using the Variance of Laplacian method
         for id in self.images:
-            if (not id in self.image_ids_with_crowd) and (not id in self.image_ids_with_too_few_keypoints) and (
-                    id in self.id_to_annot.keys()):
-
+            if id in self.id_to_annot.keys() and not id in self.image_ids_being_filtered:
                 complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
                 assert (Path(complete_path).exists())
                 cv_image = cv2.imread(complete_path)
@@ -249,9 +252,9 @@ class CocoFilter:
                     # cv2.waitKey(0)
                     # cv2.destroyAllWindows()
 
-                    # if the focus measure is less than the supplied threshold, then the image should be considered "blurry"
+                    # if the focus measure is less than the supplied threshold, then the image is considered blurry
                     if fm < self.blur_threshold:
-                        self.image_ids_blurry.add(id)
+                        self.image_ids_being_filtered.add(id)
                         break
 
     def _filter_images(self):
@@ -262,14 +265,13 @@ class CocoFilter:
         self.new_image_ids = set()
         self.new_image_filenames = set()
 
-        for image_id, annotations in self.id_to_annot.items():
-            if (not image_id in self.image_ids_with_crowd) and (
-                    not image_id in self.image_ids_with_too_few_keypoints) and (not image_id in self.image_ids_blurry):
+        for id, annotations in self.id_to_annot.items():
+            if not id in self.image_ids_being_filtered:
                 for annot in annotations:
                     new_annotation = dict(annot)
                     new_annotation['category_id'] = 1  # human
                     self.new_annotations.append(new_annotation)
-                    self.new_image_ids.add(image_id)
+                    self.new_image_ids.add(id)
 
                 cnt += 1
                 if cnt % 500 == 0:
@@ -279,15 +281,14 @@ class CocoFilter:
         print(str(cnt) + " matching images found")
 
         self.new_images = []
-        for image_id in self.new_image_ids:
-            self.new_images.append(self.images[image_id])
+        for id in self.new_image_ids:
+            self.new_images.append(self.images[id])
 
         cnt = 0
         self.new_dects = []
-        for image_id, annotations in self.id_to_annot.items():
-            if (not image_id in self.image_ids_with_crowd) and (
-                    not image_id in self.image_ids_with_too_few_keypoints) and (not image_id in self.image_ids_blurry):
-                self.new_dects.append(self.id_to_dects[image_id])
+        for id, annotations in self.id_to_annot.items():
+            if not id in self.image_ids_being_filtered:
+                self.new_dects.append(self.id_to_dets[id])
                 cnt += 1
             if cnt >= self.max_files:
                 break
@@ -296,19 +297,15 @@ class CocoFilter:
         files = []
         cnt = 0
 
+        if not os.path.exists(self.output_image_folder):
+            os.mkdir(self.output_image_folder)
+
         for i in self.new_images:
             files.append(i['file_name'])
 
-        folder = os.path.join(self.input_image_path.parent, self.input_image_path.name + "_reduced")
-        if not os.path.exists(folder):
-            os.mkdir(folder)
-        else:
-            for file in os.listdir(folder):
-                os.remove(os.path.join(folder, file))
-
         for f in files:
             shutil.copy(os.path.join(self.input_image_path, f),
-                        os.path.join(folder, f))
+                        os.path.join(self.output_image_folder, f))
             cnt += 1
             if cnt % 500 == 0:
                 print(str(cnt) + " images copied")
