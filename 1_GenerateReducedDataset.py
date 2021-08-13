@@ -4,6 +4,7 @@ import math
 import os
 import shutil
 import cv2
+import numpy as np
 from enum import IntEnum
 from pathlib import Path
 from datetime import date
@@ -54,13 +55,22 @@ class CocoFilter:
             quit()
         self.person_det_path = Path(console_args.detections_json)
 
-        # Verify output path does not already exist
-        if Path(console_args.output_json).exists():
-            should_continue = input('Output path already exists. Overwrite? (y/n) ').lower()
+        # Verify output json file does not already exist
+        size = len(str(self.input_json_path))
+        self.output_json_val2017_path = Path(str(self.input_json_path)[:size - 5] + '_reduced.json')
+        size = len(str(self.person_det_path))
+        self.output_json_pers_det_path = Path(str(self.person_det_path)[:size - 5] + '_reduced.json')
+
+        if self.output_json_val2017_path.exists() or self.output_json_pers_det_path.exists():
+            should_continue = input('At least one output file already exists. Overwrite? (y/n) ').lower()
             if should_continue != 'y' and should_continue != 'yes':
                 print('Quitting early.')
                 quit()
-        self.output_json_path = Path(console_args.output_json)
+
+            if self.output_json_val2017_path.exists():
+                os.remove(self.output_json_val2017_path)
+            if self.output_json_pers_det_path.exists():
+                os.remove(self.output_json_pers_det_path)
 
         print('Loading json file...')
         with open(self.input_json_path) as json_file:
@@ -73,14 +83,6 @@ class CocoFilter:
         self.blur_threshold = console_args.threshold
 
     def main(self):
-        # removing old files
-        if os.path.exists(self.output_json_path):
-            os.remove(self.output_json_path)
-
-        size = len(str(self.person_det_path))
-        if os.path.exists(str(self.person_det_path)[:size - 5] + '_reduced.json'):
-            os.remove(str(self.person_det_path)[:size - 5] + '_reduced.json')
-
         # Process the json
         print('Processing input json...')
         self._generate_info()
@@ -91,6 +93,7 @@ class CocoFilter:
         print('Filtering...')
         self._find_annotations_with_crowd()
         self._find_annotations_with_too_few_keypoints()
+        self._find_annotations_with_too_small_persons()
         self._find_blurry_images()
         self._filter_images()
 
@@ -112,16 +115,15 @@ class CocoFilter:
             else:
                 flat_list.append(element)
 
-        new_master_json_dect = flat_list
+        new_master_json_det = flat_list
 
         # Write the JSON to a file
         print('Saving new json file...')
-        with open(self.output_json_path, 'w+') as output_file:
+        with open(self.output_json_val2017_path, 'w+') as output_file:
             json.dump(new_master_json, output_file)
 
-        size = len(str(self.person_det_path))
-        with open(str(self.person_det_path)[:size - 5] + '_reduced.json', 'w+') as output_file:
-            json.dump(new_master_json_dect, output_file)
+        with open(self.output_json_pers_det_path, 'w+') as output_file:
+            json.dump(new_master_json_det, output_file)
 
         print('Filtered json saved.')
 
@@ -183,6 +185,48 @@ class CocoFilter:
                     self.image_ids_with_too_few_keypoints.add(image_id)
                     break
 
+    def _find_annotations_with_too_small_persons(self):
+        self.image_ids_with_too_small_persons = set()
+
+        for id in self.images:
+            if (not id in self.image_ids_with_crowd) and (not id in self.image_ids_with_too_few_keypoints) and (
+                    id in self.id_to_annot.keys()):
+                complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
+                assert (Path(complete_path).exists())
+                img = cv2.imread(complete_path)
+                height, width, channels = img.shape
+
+                for annot in self.id_to_annot[id]:
+                    # get x,y,type from keypoints
+                    keypoint_cnt = 0
+                    keypoints_x = annot['keypoints'][::3]
+                    keypoints_y = annot['keypoints'][1::3]
+                    test = annot['bbox']
+                    print(test)
+                    leftMostKeypoint = [width, 0]
+                    rightMostKeypoint = [0, 0]
+                    upMostKeypoint = [0, height]
+                    downMostKeypoint = [0, 0]
+
+                    # keypoints_type = annotation['keypoints'][2::3]
+                    for i in range(Keypoint.left_shoulder, Keypoint.right_ankle + 1):
+                        if keypoints_x[i] != 0 and keypoints_y[i] != 0:
+                            if keypoints_x[i] < leftMostKeypoint[0]:
+                                leftMostKeypoint = [keypoints_x[i], keypoints_y[i]]
+                            if keypoints_x[i] > rightMostKeypoint[0]:
+                                rightMostKeypoint = [keypoints_x[i], keypoints_y[i]]
+                            if keypoints_y[i] < upMostKeypoint[1]:
+                                upMostKeypoint = [keypoints_x[i], keypoints_y[i]]
+                            if keypoints_y[i] > downMostKeypoint[1]:
+                                downMostKeypoint = [keypoints_x[i], keypoints_y[i]]
+                    print(leftMostKeypoint)
+                    print(rightMostKeypoint)
+                    print(upMostKeypoint)
+                    print(downMostKeypoint)
+                    if keypoint_cnt < self.min_keypoint_cnt:
+                        self.image_ids_with_too_small_persons.add(id)
+                        break
+
     def _find_blurry_images(self):
         # load the image, crop the bounding boxes, convert it to grayscale, and compute the
         # focus measure of the image using the Variance of Laplacian
@@ -193,6 +237,7 @@ class CocoFilter:
                     id in self.id_to_annot.keys()):
 
                 complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
+                assert (Path(complete_path).exists())
                 cv_image = cv2.imread(complete_path)
                 for annot in self.id_to_annot[id]:
                     x, y, width, height = annot['bbox']
@@ -240,7 +285,8 @@ class CocoFilter:
         cnt = 0
         self.new_dects = []
         for image_id, annotations in self.id_to_annot.items():
-            if (not image_id in self.image_ids_with_crowd) and (not image_id in self.image_ids_with_too_few_keypoints) and (not image_id in self.image_ids_blurry):
+            if (not image_id in self.image_ids_with_crowd) and (
+                    not image_id in self.image_ids_with_too_few_keypoints) and (not image_id in self.image_ids_blurry):
                 self.new_dects.append(self.id_to_dects[image_id])
                 cnt += 1
             if cnt >= self.max_files:
@@ -273,7 +319,7 @@ class CocoFilter:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input_json", dest="input_json", help="path to a json file in coco format")
-    parser.add_argument("-o", "--output_json", dest="output_json", help="path to save the output json")
+    parser.add_argument("-d", "--detections_json", dest="detections_json", help="path to person detection results json")
     parser.add_argument("-p", "--input_image_path", dest="input_image_path", help="path to image folder")
     parser.add_argument("-c", "--max_count_images", dest="max_count_images",
                         help="maximum number of images (annotations)")
@@ -281,7 +327,6 @@ if __name__ == "__main__":
                         help="minimum count of keypoints for each person in image")
     parser.add_argument("-t", "--threshold", type=float, default=120.0,
                         help="focus measures that fall below this value will be considered 'blurry'")
-    parser.add_argument("-d", "--detections_json", dest="detections_json", help="path to person detection results json")
 
     args = parser.parse_args()
 
