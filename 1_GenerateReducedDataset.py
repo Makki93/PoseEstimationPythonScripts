@@ -204,6 +204,16 @@ class CocoFilter:
                         self.image_ids_being_filtered.add(id)
                         break
 
+    def _find_dark_images(self):
+        for id in self.images:
+            if id in self.id_to_annot.keys() and not id in self.image_ids_being_filtered:
+                complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
+                assert (Path(complete_path).exists())
+                h,s,v = cv2.split(cv2.cvtColor(cv2.imread(complete_path), cv2.COLOR_BGR2HSV))
+                if np.median(v) < 50:
+                    print(id)
+                    self.image_ids_being_filtered.add(id)
+                 
     def _is_grey_scale(self, img_path):
         img = Image.open(img_path).convert('RGB')
         w, h = img.size
@@ -223,26 +233,6 @@ class CocoFilter:
                 if self._is_grey_scale(complete_path):
                     self.image_ids_being_filtered.add(id)
 
-    def _find_dark_images(self):
-        for id in self.images:
-            if id in self.id_to_annot.keys() and not id in self.image_ids_being_filtered:
-                complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
-                assert (Path(complete_path).exists())
-                cv_image = cv2.imread(complete_path)
-                for annot in self.id_to_annot[id]:
-                    x, y, width, height = annot['bbox']
-                    crop_img = cv_image[int(math.ceil(y)):int(math.ceil(y) + math.floor(height)),
-                               int(math.ceil(x)):math.ceil(x) + int(math.floor(width))]
-                    hsv = cv2.cvtColor(crop_img, cv2.COLOR_BGR2HSV)
-                    h,s,v = cv2.split(hsv)
-    
-                    if np.median(v) < 30:
-                        cv2.imshow('image', crop_img)
-                        cv2.waitKey(0)
-                        cv2.destroyAllWindows()
-                        self.image_ids_being_filtered.add(id)
-                        break
-
     def _find_blurry_images(self):
         # load the image, crop the bounding boxes, convert it to grayscale, and compute the
         # focus measure of the image using the Variance of Laplacian method
@@ -250,21 +240,19 @@ class CocoFilter:
             if id in self.id_to_annot.keys() and not id in self.image_ids_being_filtered:
                 complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
                 assert (Path(complete_path).exists())
-                cv_image = cv2.imread(complete_path)
-                for annot in self.id_to_annot[id]:
-                    x, y, width, height = annot['bbox']
-                    crop_img = cv_image[int(math.ceil(y)):int(math.ceil(y) + math.floor(height)),
-                               int(math.ceil(x)):math.ceil(x) + int(math.floor(width))]
-                    gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY)
-                    fm = cv2.Laplacian(gray, cv2.CV_64F).var()
-                    # cv2.imshow('image', crop_img)
-                    # cv2.waitKey(0)
-                    # cv2.destroyAllWindows()
+                gray = cv2.cvtColor(cv2.imread(complete_path), cv2.COLOR_BGR2GRAY)
+                # cv_image = cv2.imread(complete_path)
+                # for annot in self.id_to_annot[id]:
+                #     x, y, width, height = annot['bbox']
+                #     crop_img = cv_image[int(math.ceil(y)):int(math.ceil(y) + math.floor(height)),
+                #                int(math.ceil(x)):math.ceil(x) + int(math.floor(width))]
+                #     gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY)
+                fm = cv2.Laplacian(gray, cv2.CV_64F).var()
 
-                    # if the focus measure is less than the supplied threshold, then the image is considered blurry
-                    if fm < self.blur_threshold:
-                        self.image_ids_being_filtered.add(id)
-                        break
+                # if the focus measure is less than the supplied threshold, then the image is considered blurry
+                if fm < self.blur_threshold:
+                    self.image_ids_being_filtered.add(id)
+                    break
 
     def _filter_images(self):
         """ Create new json of images which were found with console argument criteria
