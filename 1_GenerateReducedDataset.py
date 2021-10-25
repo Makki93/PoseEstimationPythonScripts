@@ -52,22 +52,14 @@ class CocoFilter:
             print('Quitting early.')
             quit()
 
-        if not Path(console_args.detections_json).exists():
-            print('Person detection json path not found.')
-            print('Quitting early.')
-            quit()
-
         self.input_json_path = Path(console_args.input_json)
         self.input_image_path = Path(console_args.input_image_path)
-        self.person_det_path = Path(console_args.detections_json)
 
         # Verify output json file does not already exist
         size = len(str(self.input_json_path))
         self.output_json_val2017_path = Path(str(self.input_json_path)[:size - 5] + '_reduced.json')
-        size = len(str(self.person_det_path))
-        self.output_json_pers_det_path = Path(str(self.person_det_path)[:size - 5] + '_reduced.json')
 
-        if self.output_json_val2017_path.exists() or self.output_json_pers_det_path.exists():
+        if self.output_json_val2017_path.exists():
             should_continue = input('At least one output file already exists. Overwrite? (y/n) ').lower()
             if should_continue != 'y' and should_continue != 'yes':
                 print('Quitting early.')
@@ -75,8 +67,6 @@ class CocoFilter:
 
             if self.output_json_val2017_path.exists():
                 os.remove(self.output_json_val2017_path)
-            if self.output_json_pers_det_path.exists():
-                os.remove(self.output_json_pers_det_path)
 
         # Clear target image folder
         self.output_image_folder = os.path.join(self.input_image_path.parent, self.input_image_path.name + "_reduced")
@@ -88,8 +78,6 @@ class CocoFilter:
         with open(self.input_json_path) as json_file:
             self.jsonFile = json.load(json_file)
 
-        with open(self.person_det_path) as json_file:
-            self.jsonDetFile = json.load(json_file)
         self.blur_threshold = console_args.threshold
 
     def main(self):
@@ -115,26 +103,11 @@ class CocoFilter:
             'annotations': self.new_annotations,
             'categories': self.jsonFile['categories']
         }
-
-        flat_list = []
-        # Iterate through the outer list
-        for element in self.new_dects:
-            if type(element) is list:
-                # If the element is of type list, iterate through the sublist
-                for item in element:
-                    flat_list.append(item)
-            else:
-                flat_list.append(element)
-
-        new_master_json_det = flat_list
-
+        
         # Write the JSON to a file
         print('Saving new json file...')
         with open(self.output_json_val2017_path, 'w+') as output_file:
             json.dump(new_master_json, output_file)
-
-        with open(self.output_json_pers_det_path, 'w+') as output_file:
-            json.dump(new_master_json_det, output_file)
 
         print('Filtered json saved.')
 
@@ -164,13 +137,6 @@ class CocoFilter:
             if image_id not in self.id_to_annot:
                 self.id_to_annot[image_id] = []
             self.id_to_annot[image_id].append(annot)
-
-        self.id_to_dets = dict()
-        for annot in self.jsonDetFile:
-            image_id = annot['image_id']
-            if image_id not in self.id_to_dets:
-                self.id_to_dets[image_id] = []
-            self.id_to_dets[image_id].append(annot)
 
     def _find_annotations_with_crowd(self):
         for id, annotations in self.id_to_annot.items():
@@ -284,15 +250,6 @@ class CocoFilter:
         for id in self.new_image_ids:
             self.new_images.append(self.images[id])
 
-        cnt = 0
-        self.new_dects = []
-        for id, annotations in self.id_to_annot.items():
-            if not id in self.image_ids_being_filtered:
-                self.new_dects.append(self.id_to_dets[id])
-                cnt += 1
-            if cnt >= self.max_files:
-                break
-
     def _copy_images(self):
         files = []
         cnt = 0
@@ -316,7 +273,6 @@ class CocoFilter:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input_json", dest="input_json", help="path to a json file in coco format")
-    parser.add_argument("-d", "--detections_json", dest="detections_json", help="path to person detection results json")
     parser.add_argument("-p", "--input_image_path", dest="input_image_path", help="path to image folder")
     parser.add_argument("-c", "--max_count_images", dest="max_count_images",
                         help="maximum number of images (annotations)")
