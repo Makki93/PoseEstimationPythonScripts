@@ -4,9 +4,11 @@ import math
 import os
 import shutil
 import cv2
+from PIL import Image
 from enum import IntEnum
 from pathlib import Path
 from datetime import date
+import numpy as np
 
 
 class Keypoint(IntEnum):
@@ -92,7 +94,9 @@ class CocoFilter:
         self._find_annotations_with_crowd()
         self._find_annotations_with_too_few_keypoints()
         self._find_annotations_with_too_small_persons()
-        self._find_annotations_with_too_big_persons()
+        #self._find_annotations_with_too_big_persons()
+        self._find_dark_images()
+        self._find_grayscale_images()
         self._find_blurry_images()
         self._filter_images()
 
@@ -103,7 +107,7 @@ class CocoFilter:
             'annotations': self.new_annotations,
             'categories': self.jsonFile['categories']
         }
-        
+
         # Write the JSON to a file
         print('Saving new json file...')
         with open(self.output_json_val2017_path, 'w+') as output_file:
@@ -155,10 +159,10 @@ class CocoFilter:
                     keypoints_x = annot['keypoints'][::3]
                     keypoints_y = annot['keypoints'][1::3]
                     # keypoints_type = annotation['keypoints'][2::3]
-                    for i in range(Keypoint.left_shoulder, Keypoint.right_ankle + 1):
+                    for i in range(Keypoint.nose, Keypoint.right_ankle + 1):
                         if keypoints_x[i] != 0 and keypoints_y[i] != 0:
                             keypoint_cnt += 1
-                    if keypoint_cnt < self.min_keypoint_cnt:
+                    if keypoint_cnt < self.min_keypoint_cnt :
                         self.image_ids_being_filtered.add(id)
                         break
 
@@ -173,11 +177,11 @@ class CocoFilter:
                 for annot in self.id_to_annot[id]:
                     bbox_width, bbox_height = annot['bbox'][2:]
                     height_ratio = bbox_height / image_height
-                    if height_ratio < 0.5:
+                    if height_ratio < 0.3:
                         self.image_ids_being_filtered.add(id)
                         break
                     width_ratio = bbox_width / image_width
-                    if width_ratio < 0.15:
+                    if width_ratio < 0.2:
                         self.image_ids_being_filtered.add(id)
                         break
 
@@ -192,11 +196,50 @@ class CocoFilter:
                 for annot in self.id_to_annot[id]:
                     bbox_width, bbox_height = annot['bbox'][2:]
                     height_ratio = bbox_height / image_height
-                    if height_ratio > 0.95:
+                    if height_ratio > 0.9:
                         self.image_ids_being_filtered.add(id)
                         break
                     width_ratio = bbox_width / image_width
-                    if width_ratio > 0.95:
+                    if width_ratio > 0.8:
+                        self.image_ids_being_filtered.add(id)
+                        break
+
+    def _is_grey_scale(self, img_path):
+        img = Image.open(img_path).convert('RGB')
+        w, h = img.size
+        for i in range(w):
+            for j in range(h):
+                r, g, b = img.getpixel((i,j))
+                if r != g != b: 
+                    return False
+        return True
+
+    def _find_grayscale_images(self):
+        for id in self.images:
+            if id in self.id_to_annot.keys() and not id in self.image_ids_being_filtered:
+                complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
+                assert (Path(complete_path).exists())
+
+                if self._is_grey_scale(complete_path):
+                    self.image_ids_being_filtered.add(id)
+
+    def _find_dark_images(self):
+        for id in self.images:
+            if id in self.id_to_annot.keys() and not id in self.image_ids_being_filtered:
+                complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
+                assert (Path(complete_path).exists())
+                cv_image = cv2.imread(complete_path)
+                for annot in self.id_to_annot[id]:
+                    x, y, width, height = annot['bbox']
+                    crop_img = cv_image[int(math.ceil(y)):int(math.ceil(y) + math.floor(height)),
+                               int(math.ceil(x)):math.ceil(x) + int(math.floor(width))]
+                    hsv = cv2.cvtColor(crop_img, cv2.COLOR_BGR2HSV)
+                    h,s,v = cv2.split(hsv)
+    
+                    if np.median(v) < 30:
+                        cv2.imshow('image', crop_img)
+                        cv2.waitKey(0)
+                        cv2.destroyAllWindows()
                         self.image_ids_being_filtered.add(id)
                         break
 
@@ -285,3 +328,5 @@ if __name__ == "__main__":
 
     cf = CocoFilter(args)
     cf.main()
+
+    # example call: python 1_GenerateReducedDataset.py -i /d/ThesisData/coco/annotations/person_keypoints_train2017.json -p /d/ThesisData/coco/images/train2017/ -c 100000 -k 12 -t 120
