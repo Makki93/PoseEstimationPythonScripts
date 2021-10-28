@@ -81,6 +81,7 @@ class CocoFilter:
             self.jsonFile = json.load(json_file)
 
         self.blur_threshold = console_args.threshold
+        self.brightness_threshold = console_args.threshold_2
 
     def main(self):
         # Process the json
@@ -210,8 +211,7 @@ class CocoFilter:
                 complete_path = os.path.join(self.input_image_path, self.images[id]['file_name'])
                 assert (Path(complete_path).exists())
                 h,s,v = cv2.split(cv2.cvtColor(cv2.imread(complete_path), cv2.COLOR_BGR2HSV))
-                if np.median(v) < 50:
-                    print(id)
+                if np.median(v) < self.brightness_threshold:
                     self.image_ids_being_filtered.add(id)
                  
     def _is_grey_scale(self, img_path):
@@ -311,10 +311,9 @@ if __name__ == "__main__":
                         help="minimum count of keypoints for each person in image")
     parser.add_argument("-t", "--threshold", type=float, default=120.0,
                         help="focus measures that fall below this value will be considered 'blurry'")
-
+    parser.add_argument("-u", "--threshold_2", type=float, default=120.0,
+                        help="brightness in HSV model which are below this percentage will be dropped")
     args = parser.parse_args()
-
     cf = CocoFilter(args)
     cf.main()
-
-    # example call: python 1_GenerateReducedDataset.py -i /d/ThesisData/coco/annotations/person_keypoints_train2017.json -p /d/ThesisData/coco/images/train2017/ -c 100000 -k 12 -t 120
+    # example call: python 1_GenerateReducedDataset.py -i /d/ThesisData/coco/annotations/person_keypoints_train2017.json -p /d/ThesisData/coco/images/train2017/ -c 100000 -k 12 -t 120 -u 30
